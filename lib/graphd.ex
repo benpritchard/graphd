@@ -70,7 +70,7 @@ defmodule Graphd do
   defp default_opts(opts) do
     opts
     |> Keyword.put_new(:hostname, System.get_env("DGRAPH_HOST") || "localhost")
-    |> Keyword.put_new(:port, System.get_env("DGRAPH_PORT") || 9080)
+    |> Keyword.put_new(:port, System.get_env("DGRAPH_PORT"))
     |> Keyword.put_new(:transport, :grpc)
     |> Keyword.put_new(:show_sensitive_data_on_connection_error, true)
     |> Keyword.put_new(:connect_timeout, @timeout)

@@ -1,11 +1,11 @@
 defmodule Graphd.TestHelper do
   @graphd_adapter :"#{System.get_env("GRAPHD_ADAPTER", "grpc")}"
-  @offset String.to_integer(System.get_env("GRAPHD_PORT_OFFSET", "0"))
+  @offset String.to_integer(System.get_env("GRAPHD_PORT_OFFSET", "2"))
 
   def opts() do
     case @graphd_adapter do
-      :http -> [transport: :http, port: 8090 + @offset]
-      :grpc -> [transport: :grpc, port: 9090 + @offset]
+      :http -> [transport: :http, port: 8080 + @offset]
+      :grpc -> [transport: :grpc, port: 9080 + @offset]
     end
   end
 

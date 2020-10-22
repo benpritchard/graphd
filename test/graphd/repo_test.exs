@@ -325,6 +325,15 @@ defmodule Graphd.RepoTest do
       assert {:ok, %User{uid: ^uid} = created_user} = TestRepo.get(uid)
     end
 
+    test "creating a record with a node-edge" do
+      {friend, _} = create_user(%User{name: "Deidre"})
+      user = %User{name: "Ben", email: "ben@email.com", friends: [friend]}
+
+      assert {:ok, %User{uid: uid}} = TestRepo.create(user)
+      assert uid != nil
+      assert {:ok, %User{uid: ^uid} = created_user} = TestRepo.get(uid)
+    end
+
     test "creating a record (using changesets)" do
       changeset = Changeset.cast(%User{}, %{name: "Ben", email: "ben@email.com"}, [:name, :email])
 

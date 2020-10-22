@@ -29,7 +29,6 @@ defmodule Graphd.MixProject do
   defp deps do
     [
       {:db_connection, "~> 2.1"},
-      # {:grpc, "~> 0.3.1"},
       {:grpc, github: "elixir-grpc/grpc"},
       {:jason, "~> 1.0", optional: true},
       {:mint, "~> 1.0", optional: true},
