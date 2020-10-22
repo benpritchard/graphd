@@ -24,13 +24,14 @@ defmodule Graphd.Type.Operation do
     map
     |> Map.put_new(:schema, "")
     |> Map.put_new(:drop_attr, "")
+    |> Map.put_new(:drop_op, :NONE)
     |> Map.put_new(:drop_all, false)
   end
 
   @impl true
   def encode(%Query{statement: statement}, _, _) do
-    %{drop_all: drop_all, schema: schema, drop_attr: drop_attr} = statement
-    Operation.new(drop_all: drop_all, schema: encode_schema(schema), drop_attr: drop_attr)
+    %{drop_all: drop_all, schema: schema, drop_attr: drop_attr, drop_op: drop_op} = statement
+    Operation.new(drop_all: drop_all, schema: encode_schema(schema), drop_attr: drop_attr, drop_op: drop_op)
   end
 
   @impl true

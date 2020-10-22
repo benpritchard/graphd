@@ -88,6 +88,7 @@ defmodule Graphd.Repo do
 
       def stop(timeout \\ 5000), do: Supervisor.stop(@name, :normal, timeout)
 
+      def drop_data(), do: Graphd.Repo.drop_data(@name)
       def drop_all(), do: Graphd.Repo.drop_all(@name)
     end
   end
@@ -151,7 +152,7 @@ defmodule Graphd.Repo do
   def create(conn, %{uid: uid} = data, opts) do
     case uid do
       nil -> set(conn, data, opts)
-      _ -> {:error, "MUST_NOT_INCLUDE_UID"}
+      _ -> {:error, %{reason: :uid_present}}
     end
   end
 
@@ -444,10 +445,10 @@ defmodule Graphd.Repo do
     end
   end
 
-  @spec get_by(conn, %{lookup: any}, map) :: {:error, Error.t() | term} | {:ok, map | nil}
   @doc """
   Get by field
   """
+  @spec get_by(conn, %{lookup: any}, map) :: {:error, Error.t() | term} | {:ok, map | nil}
   def get_by(conn, %{lookup: lookup}, %{} = data) do
     [{field, value} | _] = Map.to_list(encode(data))
 
@@ -640,8 +641,15 @@ defmodule Graphd.Repo do
   end
 
   @doc """
-  Drop everything from database. Use with caution, as it deletes everything, what you have
-  in database.
+  Drop all data from database. Use with caution, as it deletes all data in the database.
+  """
+  @spec drop_data(conn) :: {:ok, map} | {:error, Graphd.Error.t() | term}
+  def drop_data(conn) do
+    Graphd.alter(conn, %{drop_op: :DATA})
+  end
+
+  @doc """
+  Drop everything from database. Use with caution, as it deletes everything in database.
   """
   @spec drop_all(conn) :: {:ok, map} | {:error, Graphd.Error.t() | term}
   def drop_all(conn) do
