@@ -46,6 +46,7 @@ defmodule Graphd.User do
   schema "user" do
     field(:email, :string, index: ["exact"])
     field(:name, :string, index: ["term"])
+    field(:password, Graphd.Password)
     field(:nickname, :string)
     field(:age, :integer)
     field(:friends, Graphd.UID)

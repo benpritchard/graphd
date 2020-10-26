@@ -239,7 +239,8 @@ defmodule Graphd.Node do
     string: "string",
     geo: "geo",
     datetime: "datetime",
-    uid: "[uid]"
+    uid: "[uid]",
+    password: "password"
   ]
 
   for {type, dgraph_type} <- @types_mapping do

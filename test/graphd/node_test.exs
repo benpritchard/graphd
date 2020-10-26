@@ -8,7 +8,7 @@ defmodule Graphd.NodeTest do
       assert "user" == User.__schema__(:source)
       assert :string == User.__schema__(:type, :name)
       assert :integer == User.__schema__(:type, :age)
-      assert [:email, :name, :nickname, :age, :friends, :location] == User.__schema__(:fields)
+      assert [:email, :name, :password, :nickname, :age, :friends, :location] == User.__schema__(:fields)
     end
 
     test "alter" do
@@ -26,6 +26,7 @@ defmodule Graphd.NodeTest do
                    "tokenizer" => ["term"],
                    "type" => "string"
                  },
+                 %{"predicate" => "user.password", "type" => "password"},
                  %{"predicate" => "user.nickname", "type" => "string"},
                  %{"predicate" => "user.age", "type" => "int"},
                  %{"predicate" => "user.friends", "type" => "[uid]"},
@@ -38,6 +39,7 @@ defmodule Graphd.NodeTest do
                      %{"name" => "user.friends", "type" => "[uid]"},
                      %{"name" => "user.age", "type" => "int"},
                      %{"name" => "user.nickname", "type" => "string"},
+                     %{"name" => "user.password", "type" => "password"},
                      %{"name" => "user.name", "type" => "string"},
                      %{"name" => "user.email", "type" => "string"}
                    ],

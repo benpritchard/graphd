@@ -470,7 +470,8 @@ defmodule Graphd.Repo do
   @doc """
   Check password
   """
-  @spec checkpass(conn, map, map) :: :error | {:ok, String.t()}
+  @spec checkpass(conn, map, map) ::
+          {:error, :no_match | :multiple | any} | {:ok, String.t()}
   def checkpass(conn, %{} = reference, %{} = password) do
     [{reference_field, value} | _] = Map.to_list(encode(reference))
     [{password_field, password} | _] = Map.to_list(encode(password))
@@ -481,14 +482,16 @@ defmodule Graphd.Repo do
       }
     }"
 
-    with {:ok, %{"checkpass" => [result]}} <-
+    with {:ok, %{"checkpass" => result}} <-
            Graphd.query(conn, statement, %{"$v" => value, "$p" => password}) do
       case result do
-        %{uid: uid, match: true} -> {:ok, uid}
-        %{match: false} -> :error
+        list when is_list(list) and length(list) > 1 -> {:error, :multiple}
+        list when is_list(list) and length(list) < 1 -> {:error, :no_match}
+        [%{"uid" => uid, "match" => true}] -> {:ok, uid}
+        [%{"match" => false}] -> {:error, :no_match}
       end
     else
-      _ -> :error
+      error -> {:error, error}
     end
   end
 

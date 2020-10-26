@@ -356,6 +356,43 @@ defmodule Graphd.RepoTest do
     end
   end
 
+  describe "checkpass/3" do
+    test "with correct credentials" do
+      {_user, uid} = create_user(%User{email: "correct-pwd@email.com", password: "super-secret"})
+
+      assert {:ok, ^uid} =
+               TestRepo.checkpass(%User{email: "correct-pwd@email.com"}, %User{
+                 password: "super-secret"
+               })
+    end
+
+    test "with wrong credentials" do
+      {_user, _uid} = create_user(%User{email: "wrong-pwd@email.com", password: "super-secret"})
+
+      assert {:error, :no_match} =
+               TestRepo.checkpass(%User{email: "wrong-pwd@email.com"}, %User{
+                 password: "wrong-secret"
+               })
+    end
+
+    test "with no users found with the reference field" do
+      assert {:error, :no_match} =
+               TestRepo.checkpass(%User{email: "unknown@email.com"}, %User{
+                 password: "whatev"
+               })
+    end
+
+    test "with multiple users found with the reference field" do
+      {_user, _uid1} = create_user(%User{email: "duplicate@email.com", password: "super-secret"})
+      {_user, _uid2} = create_user(%User{email: "duplicate@email.com", password: "other-secret"})
+
+      assert {:error, :multiple} =
+               TestRepo.checkpass(%User{email: "duplicate@email.com"}, %User{
+                 password: "super-secret"
+               })
+    end
+  end
+
   describe "schema operations" do
     test "basic crud operations" do
       user = %User{name: "Alice", age: 25}
