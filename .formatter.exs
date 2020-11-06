@@ -6,6 +6,8 @@ locals_without_parens = [
   schema: 2,
   field: 2,
   field: 3
+  has_many: 2,
+  has_many: 3,
 ]
 
 [

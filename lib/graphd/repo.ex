@@ -379,12 +379,8 @@ defmodule Graphd.Repo do
       field_name == nil ->
         encode_kv(kv, map, struct, preserve_nils)
 
-      Node.primitive_type?(type) ->
-        map = Map.put(map, field_name, encode(value))
-        encode_kv(kv, map, struct, preserve_nils)
-
       true ->
-        case type.dump(value) do
+        case dump_type(type, value) do
           {:ok, data} -> encode_kv(kv, Map.put(map, field_name, data), struct, preserve_nils)
           :error -> {:error, {:dump_error, key, type, value}}
         end
@@ -540,22 +536,30 @@ defmodule Graphd.Repo do
     end)
   end
 
-  defp do_decode_field(struct, {field_name, Graphd.UID = field_type}, value, lookup, strict?)
-       when is_list(value) do
+  defp do_decode_field(struct, {field_name, Graphd.DataType.UID = field_type}, value, lookup, strict?) do
     case decode(value, lookup, strict?) do
-      loaded_values when is_list(loaded_values) ->
-        Map.put(struct, field_name, loaded_values)
-
       {:error, _} ->
         {:error, {:load_error, field_name, field_type, value}}
+
+      {:ok, decoded} ->
+        Map.put(struct, field_name, decoded)
+
+      decoded ->
+        Map.put(struct, field_name, decoded)
     end
   end
 
   defp do_decode_field(struct, {field_name, field_type}, value, lookup, strict?) do
-    case Ecto.Type.load(field_type, value) do
+    case load_type(field_type, value) do
       {:ok, loaded_value} ->
         if Node.primitive_type?(field_type) do
-          Map.put(struct, field_name, do_decode(loaded_value, lookup, strict?))
+          case field_type do
+            :geo ->
+              Map.put(struct, field_name, loaded_value)
+
+            _ ->
+              Map.put(struct, field_name, do_decode(loaded_value, lookup, strict?))
+          end
         else
           Map.put(struct, field_name, loaded_value)
         end
@@ -657,5 +661,46 @@ defmodule Graphd.Repo do
   @spec drop_all(conn) :: {:ok, map} | {:error, Graphd.Error.t() | term}
   def drop_all(conn) do
     Graphd.alter(conn, %{drop_all: true})
+  end
+
+  defp load_type(type, values) when is_list(values) do
+    list = Enum.map(values, fn value -> do_load_type(type, value) end)
+    {:ok, list}
+  end
+
+  defp load_type(:uid, value), do: Graphd.DataType.UID.load(value)
+  defp load_type(:geo, value), do: Graphd.DataType.Geo.load(value)
+  defp load_type(type, value), do: Ecto.Type.load(type, value)
+
+  defp do_load_type(type, value) do
+    with {:ok, loaded_value} <- load_type(type, value) do
+      loaded_value
+    end
+  end
+
+  defp dump_type(type, values) when is_list(values) do
+    list = Enum.map(values, fn value -> do_dump_type(type, value) end)
+    {:ok, list}
+  end
+
+  @custom_types [
+    Graphd.DataType.UID,
+    Graphd.DataType.Geo,
+    Graphd.DataType.Password
+  ]
+  defp dump_type(type, value) when type in @custom_types, do: type.dump(value)
+  defp dump_type(type, value) do
+    cond do
+      Node.primitive_type?(type) ->
+        {:ok, encode(value)}
+      true ->
+        type.dump(value)
+    end
+  end
+
+  defp do_dump_type(type, value) do
+    with {:ok, dumped_value} <- dump_type(type, value) do
+      dumped_value
+    end
   end
 end

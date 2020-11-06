@@ -16,42 +16,21 @@ defmodule Graphd.TestHelper do
   def adapter(), do: @graphd_adapter
 end
 
-defmodule Graphd.Geo do
-  use Ecto.Type
-  defstruct lon: 0.0, lat: 0.0
-
-  @impl true
-  def type(), do: :geo
-
-  @impl true
-  def cast(%{lat: lat, lon: lon}), do: {:ok, %__MODULE__{lat: lat, lon: lon}}
-  def cast(_), do: :error
-
-  @impl true
-  def load(%{"type" => "Point", "coordinates" => [lat, lon]}) do
-    {:ok, %__MODULE__{lat: lat, lon: lon}}
-  end
-
-  @impl true
-  def dump(%__MODULE__{lat: lat, lon: lon}) do
-    {:ok, %{"type" => "Point", "coordinates" => [lat, lon]}}
-  end
-
-  def dump(_), do: :error
-end
-
 defmodule Graphd.User do
   use Graphd.Node
 
   schema "user" do
-    field(:email, :string, index: ["exact"])
-    field(:name, :string, index: ["term"])
-    field(:password, Graphd.Password)
-    field(:nickname, :string)
-    field(:age, :integer)
-    field(:friends, Graphd.UID)
-    field(:location, Graphd.Geo)
-    field(:cache, :any, virtual: true)
+    field :email, :string, index: ["exact"]
+    field :name, :string, index: ["term"]
+    field :password, :password
+    field :nickname, :string
+    field :age, :integer
+    has_many :friends, :uid
+    field :location, :geo
+    has_many :destinations, :geo
+    field :referrer, :uid
+    field :cache, :any, virtual: true
+    has_many :tags, :string
   end
 end
 

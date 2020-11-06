@@ -8,7 +8,7 @@ defmodule Graphd.NodeTest do
       assert "user" == User.__schema__(:source)
       assert :string == User.__schema__(:type, :name)
       assert :integer == User.__schema__(:type, :age)
-      assert [:email, :name, :password, :nickname, :age, :friends, :location] == User.__schema__(:fields)
+      assert [:email, :name, :password, :nickname, :age, :friends, :location, :destinations, :referrer, :tags] == User.__schema__(:fields)
     end
 
     test "alter" do
@@ -30,13 +30,19 @@ defmodule Graphd.NodeTest do
                  %{"predicate" => "user.nickname", "type" => "string"},
                  %{"predicate" => "user.age", "type" => "int"},
                  %{"predicate" => "user.friends", "type" => "[uid]"},
-                 %{"predicate" => "user.location", "type" => "geo"}
+                 %{"predicate" => "user.location", "type" => "geo"},
+                 %{"predicate" => "user.destinations", "type" => "[geo]"},
+                 %{"predicate" => "user.referrer", "type" => "uid"},
+                 %{"predicate" => "user.tags", "type" => "[string]"}
                ],
                "types" => [
                  %{
                    "fields" => [
+                     %{"name" => "user.tags", "type" => "string"},
+                     %{"name" => "user.referrer", "type" => "uid"},
+                     %{"name" => "user.destinations", "type" => "geo"},
                      %{"name" => "user.location", "type" => "geo"},
-                     %{"name" => "user.friends", "type" => "[uid]"},
+                     %{"name" => "user.friends", "type" => "uid"},
                      %{"name" => "user.age", "type" => "int"},
                      %{"name" => "user.nickname", "type" => "string"},
                      %{"name" => "user.password", "type" => "password"},

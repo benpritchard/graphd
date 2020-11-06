@@ -173,11 +173,20 @@ defmodule Graphd.Node do
 
   @doc false
   def __gen_changeset__(fields) do
-    for %Graphd.Field{name: name, type: type} <- fields, into: %{}, do: {name, ecto_type(type)}
+    for %Graphd.Field{name: name, type: type, opts: opts} <- fields, into: %{}, do: {name, ecto_type(type, opts[:list])}
   end
 
-  defp ecto_type(:datetime), do: :utc_datetime
-  defp ecto_type(type), do: type
+  defp ecto_type(type, list) do
+    typ = do_ecto_type(type)
+
+    case list do
+      true -> {:array, typ}
+      _ -> typ
+    end
+  end
+
+  defp do_ecto_type(:datetime), do: :utc_datetime
+  defp do_ecto_type(type), do: type
 
   defmacro field(name, type, opts \\ []) do
     quote do
@@ -185,8 +194,22 @@ defmodule Graphd.Node do
     end
   end
 
+  defmacro has_many(name, type, opts \\ []) do
+    quote do
+      Graphd.Node.__field__(__MODULE__, unquote(name), unquote(type), [list: true] ++ unquote(opts), @depends_on)
+    end
+  end
+
   @doc false
   def __field__(module, name, type, opts, depends_on) do
+    type =
+      case type do
+        :uid -> Graphd.DataType.UID
+        :geo -> Graphd.DataType.Geo
+        :password -> Graphd.DataType.Password
+        _ -> type
+      end
+
     schema_name = Module.get_attribute(module, :name)
     Module.put_attribute(module, :fields_struct, {name, opts[:default]})
 
@@ -227,7 +250,7 @@ defmodule Graphd.Node do
   defp alter_field(field_name, type, opts) do
     basic_alter = %{
       "predicate" => field_name,
-      "type" => db_type(type)
+      "type" => db_type(type, opts[:list])
     }
 
     opts |> Enum.flat_map(&gen_opt(&1, type)) |> Enum.into(basic_alter)
@@ -239,7 +262,7 @@ defmodule Graphd.Node do
     string: "string",
     geo: "geo",
     datetime: "datetime",
-    uid: "[uid]",
+    uid: "uid",
     password: "password"
   ]
 
@@ -250,11 +273,16 @@ defmodule Graphd.Node do
   @primitive_types Keyword.keys(@types_mapping)
   def primitive_type?(type), do: type in @primitive_types
 
-  defp db_type(type) do
-    if primitive_type?(type), do: primitive_type(type), else: primitive_type(type.type)
+  defp db_type(type, list \\ nil) do
+    typ = if primitive_type?(type), do: primitive_type(type), else: primitive_type(type.type)
+
+    case list do
+      true -> "[#{typ}]"
+      _ -> typ
+    end
   end
 
-  @ignore_keys [:default, :depends_on]
+  @ignore_keys [:default, :depends_on, :list]
   defp gen_opt({key, _value}, _type) when key in @ignore_keys, do: []
   defp gen_opt({:index, true}, type), do: [{"index", true}, {"tokenizer", [db_type(type)]}]
 

@@ -1,4 +1,4 @@
-defmodule Graphd.Password do
+defmodule Graphd.DataType.Password do
   use Ecto.Type
 
   @impl true

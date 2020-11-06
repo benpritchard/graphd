@@ -2,7 +2,8 @@ defmodule Graphd.RepoTest do
   use ExUnit.Case
 
   alias Ecto.Changeset
-  alias Graphd.{Geo, TestHelper, TestRepo, User}
+  alias Graphd.{TestHelper, TestRepo, User}
+  alias Graphd.DataType.Geo
 
   setup_all do
     {:ok, pid} = TestRepo.start_link(TestHelper.opts())
@@ -27,7 +28,40 @@ defmodule Graphd.RepoTest do
       assert {:ok, %User{uid: ^uid, name: "Alice", age: 25}} = TestRepo.get(uid)
     end
 
-    test "create with custom type predicate" do
+    test "create with password type predicate" do
+      {_user, uid} =
+        create_user(%User{name: "John", age: 19, password: "some-pass"})
+
+      assert {:ok,
+              %User{
+                uid: ^uid,
+                name: "John",
+                age: 19,
+                password: nil
+              }} = TestRepo.get(uid)
+    end
+
+    test "create with password type predicate (using changesets)" do
+      changeset =
+        Changeset.cast(
+          %User{},
+          %{name: "John", age: 19, password: "secret"},
+          [:name, :age, :password]
+        )
+
+      assert {:ok, %User{uid: uid}} = TestRepo.set(changeset)
+      assert uid != nil
+
+      assert {:ok,
+              %User{
+                uid: ^uid,
+                name: "John",
+                age: 19,
+                password: nil
+              }} = TestRepo.get(uid)
+    end
+
+    test "create with geo type predicate" do
       {_user, uid} =
         create_user(%User{name: "John", age: 19, location: %Geo{lat: -33.8688, lon: 151.2093}})
 
@@ -40,7 +74,7 @@ defmodule Graphd.RepoTest do
               }} = TestRepo.get(uid)
     end
 
-    test "create with custom type predicate (using changesets)" do
+    test "create with geo type predicate (using changesets)" do
       changeset =
         Changeset.cast(
           %User{},
@@ -60,7 +94,66 @@ defmodule Graphd.RepoTest do
               }} = TestRepo.get(uid)
     end
 
+    test "create with a list primitive type predicate" do
+      {_user, uid} = create_user(%User{name: "Mike", tags: ["one", "two"]})
+
+      assert {:ok, %User{uid: ^uid, name: "Mike", tags: ["one", "two"]}} =
+               TestRepo.get(uid)
+    end
+
+    test "create with a list primitive type predicate (using changesets)" do
+      changeset = Changeset.cast(%User{}, %{name: "Alice", tags: ["abc", "def"]}, [:name, :tags])
+      assert {:ok, %User{uid: uid}} = TestRepo.set(changeset)
+      assert uid != nil
+
+      assert {:ok, %User{uid: ^uid, name: "Alice", tags: tags}} = TestRepo.get(uid)
+      assert is_list(tags)
+      assert MapSet.new(tags) == MapSet.new(["abc", "def"])
+    end
+
+    test "create with a geo list predicate" do
+      {_user, uid} = create_user(%User{name: "Mike", destinations: [%Geo{lat: -33.8688, lon: 151.2093}, %Geo{lat: -36.8875, lon: 149.9059}]})
+
+      assert {:ok, %User{uid: ^uid, name: "Mike", destinations: [%Geo{lat: -33.8688, lon: 151.2093}, %Geo{lat: -36.8875, lon: 149.9059}]}} =
+               TestRepo.get(uid)
+    end
+
+    test "create with a geo list predicate (using changesets)" do
+      changeset = Changeset.cast(%User{}, %{name: "Alice", destinations: [%Geo{lat: -33.8688, lon: 151.2093}, %Geo{lat: -36.8875, lon: 149.9059}]}, [:name, :destinations])
+      assert {:ok, %User{uid: uid}} = TestRepo.set(changeset)
+      assert uid != nil
+
+      assert {:ok, %User{uid: ^uid, name: "Alice", destinations: destinations}} = TestRepo.get(uid)
+      assert is_list(destinations)
+      assert MapSet.new(destinations) == MapSet.new([%Geo{lat: -33.8688, lon: 151.2093}, %Geo{lat: -36.8875, lon: 149.9059}])
+    end
+
     test "create including edge nodes" do
+      {referrer, _} = create_user(%User{name: "Evan"})
+      {_user, uid} = create_user(%User{name: "Mike", age: 53, referrer: referrer})
+
+      assert {:ok, %User{uid: ^uid, name: "Mike", age: 53, referrer: ^referrer}} =
+               TestRepo.get(uid)
+    end
+
+    test "create including edge nodes (using changesets)" do
+      {referrer, _} = create_user(%User{name: "Dean"})
+
+      changeset =
+        Changeset.cast(%User{}, %{name: "Mike", age: 53, referrer: referrer}, [
+          :name,
+          :age,
+          :referrer
+        ])
+
+      assert {:ok, %User{uid: uid}} = TestRepo.set(changeset)
+      assert uid != nil
+
+      assert {:ok, %User{uid: ^uid, name: "Mike", age: 53, referrer: ^referrer}} =
+               TestRepo.get(uid)
+    end
+
+    test "create including a list of edge nodes" do
       {friend, _} = create_user(%User{name: "Evan"})
       {_user, uid} = create_user(%User{name: "Mike", age: 53, friends: [friend]})
 
@@ -68,7 +161,7 @@ defmodule Graphd.RepoTest do
                TestRepo.get(uid)
     end
 
-    test "create including edge nodes (using changesets)" do
+    test "create including a list of edge nodes (using changesets)" do
       {friend, _} = create_user(%User{name: "Dean"})
 
       changeset =
