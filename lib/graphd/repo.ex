@@ -209,9 +209,11 @@ defmodule Graphd.Repo do
     %{data: %{__struct__: struct} = data, changes: changes} = changeset
     mutations = Map.merge(changes, %{__struct__: struct, uid: Map.get(data, :uid)})
 
-    nil_changes =
+    changes_for_deletion =
       Enum.reduce(changes, %{}, fn {k, v}, acc ->
         cond do
+          is_list(v) ->
+            Map.put(acc, k, items_removed_from_list(Map.get(data, k), v) )
           is_nil(v) -> Map.put(acc, k, "")
           true -> acc
         end
@@ -219,9 +221,9 @@ defmodule Graphd.Repo do
 
     deletions =
       cond do
-        is_map(nil_changes) && Enum.count(nil_changes) > 0 ->
+        is_map(changes_for_deletion) && Enum.count(changes_for_deletion) > 0 ->
           Map.merge(
-            nil_changes,
+            changes_for_deletion,
             %{
               __struct__: struct,
               uid: Map.get(data, :uid)
@@ -309,6 +311,13 @@ defmodule Graphd.Repo do
     Graphd.mutate(conn, query, [data], opts)
   end
 
+  defp items_removed_from_list(nil = _original_list, _current_list), do: nil
+  defp items_removed_from_list(original_list, current_list) do
+    MapSet.new(original_list)
+    |> MapSet.difference(MapSet.new(current_list))
+    |> MapSet.to_list()
+  end
+
   @spec maybe_put(nil | map, any, any) :: nil | map
   defp maybe_put(nil, _key, _value), do: nil
   defp maybe_put(map, _key, nil), do: map
@@ -332,6 +341,7 @@ defmodule Graphd.Repo do
         {:error, %Error{action: :delete, reason: error}}
 
       encoded_data ->
+        encoded_data = Map.delete(encoded_data, "dgraph.type")
         Graphd.delete(conn, encoded_data)
     end
   end

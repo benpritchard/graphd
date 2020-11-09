@@ -295,14 +295,53 @@ defmodule Graphd.RepoTest do
       assert {:ok, %User{uid: ^uid, name: "Paul", age: 17, friends: [^friend1, ^friend2]}} =
                TestRepo.get(uid)
     end
+
+    test "updating a list of strings to insert a new value" do
+      {_user, uid} = create_user(%User{name: "Paul", age: 17, tags: ["one", "two", "three"]})
+
+      updated_user = %User{uid: uid, name: "Paul", age: 17, tags: ["four"]}
+
+      assert {:ok, %User{uid: ^uid}} = TestRepo.set(updated_user)
+
+      assert {:ok, %User{uid: ^uid, name: "Paul", age: 17, tags: ["one", "two", "three", "four"]}} =
+               TestRepo.get(uid)
+    end
+
+    test "updating a list of strings to insert a new value (using changesets)" do
+      {user, uid} = create_user(%User{name: "Paul", age: 17, tags: ["one", "two", "three"]})
+
+      changeset = Changeset.cast(user, %{tags: ["four"]}, [:tags])
+
+      assert {:ok, %User{uid: ^uid}} = TestRepo.set(changeset)
+
+      assert {:ok, %User{uid: ^uid, name: "Paul", age: 17, tags: ["one", "two", "three", "four"]}} =
+               TestRepo.get(uid)
+    end
   end
 
   describe "delete/2" do
-    test "deleting deletes the whole thing not just a predicate or edge" do
+    test "deleting the exact object deletes the whole thing not just a predicate or edge" do
       {user, uid} = create_user(%User{name: "Norman", age: 52})
 
       assert {:ok, %{queries: %{}, uids: %{}}} = TestRepo.delete(user)
       assert {:ok, nil} = TestRepo.get(uid)
+    end
+
+    test "deleting clears exactly matching" do
+      {_user, uid} = create_user(%User{name: "Norman", age: 52})
+
+      assert {:ok, %{queries: %{}, uids: %{}}} = TestRepo.delete(%User{uid: uid, age: 52})
+      assert {:ok, %User{age: nil, name: "Norman", uid: ^uid}} = TestRepo.get(uid)
+    end
+
+    test "deleting a list of strings to remove a value" do
+      {_user, uid} = create_user(%User{name: "Paul", age: 17, tags: ["a", "b", "c"]})
+
+       assert {:ok, %{queries: %{}, uids: %{}}} = TestRepo.delete(%User{uid: uid, tags: ["b"]})
+
+      assert {:ok, %User{uid: ^uid, name: "Paul", age: 17, tags: tags}} =
+               TestRepo.get(uid)
+      assert MapSet.new(tags) == MapSet.new(["a", "c"])
     end
   end
 
@@ -367,27 +406,28 @@ defmodule Graphd.RepoTest do
                TestRepo.get(uid)
     end
 
-    test "updating a single edge node to nil" do
-      {friend, _} = create_user(%User{name: "Deidre"})
-      {_user, uid} = create_user(%User{name: "Frank", friends: [friend]})
+    test "updating a list to remove all items sets the list to nil" do
+      {friend1, _} = create_user(%User{name: "Deidre"})
+      {friend2, _} = create_user(%User{name: "Mick"})
+      {_user, uid} = create_user(%User{name: "Frank", friends: [friend1, friend2]})
 
-      deletions = %User{uid: uid, friends: [friend]}
+      deletions = %User{uid: uid, friends: [friend1, friend2]}
 
       assert {:ok, %{queries: %{}, uids: %{}}} = TestRepo.update(%{deletions: deletions})
       assert {:ok, %User{uid: ^uid, name: "Frank", friends: nil}} = TestRepo.get(uid)
     end
 
-    test "updating a list's contents (using changesets) does not work" do
+    test "updating a list's contents to [] clears the list (using changesets)" do
       {friend, _} = create_user(%User{name: "Deidre"})
-      {user, uid} = create_user(%User{name: "Frank", friends: [friend]})
+      {user, uid} = create_user(%User{name: "Frank", age: 14, friends: [friend]})
 
       changeset = Changeset.cast(user, %{friends: []}, [:friends])
 
       assert {:ok, %{queries: %{}, uids: %{}}} = TestRepo.update(changeset)
-      assert {:ok, %User{uid: ^uid, name: "Frank", friends: [^friend]}} = TestRepo.get(uid)
+      assert {:ok, %User{uid: ^uid, name: "Frank", friends: nil}} = TestRepo.get(uid)
     end
 
-    test "niling a list's contents (using changesets) does work" do
+    test "updating a list's contents to nil clears the list (using changesets)" do
       {friend, _} = create_user(%User{name: "Deidre"})
       {user, uid} = create_user(%User{name: "Frank", friends: [friend]})
 
@@ -397,7 +437,7 @@ defmodule Graphd.RepoTest do
       assert {:ok, %User{uid: ^uid, name: "Frank", friends: nil}} = TestRepo.get(uid)
     end
 
-    test "updating one of multiple edge nodes to nil" do
+    test "updating a list to delete an item" do
       {friend1, _} = create_user(%User{name: "Deidre"})
       {friend2, _} = create_user(%User{name: "Mick"})
       {_user, uid} = create_user(%User{name: "Frank", friends: [friend1, friend2]})
@@ -405,7 +445,29 @@ defmodule Graphd.RepoTest do
       deletions = %User{uid: uid, friends: [friend2]}
 
       assert {:ok, %{queries: %{}, uids: %{}}} = TestRepo.update(%{deletions: deletions})
-      assert {:ok, %User{uid: ^uid, name: "Frank", friends: [friend1]}} = TestRepo.get(uid)
+      assert {:ok, %User{uid: ^uid, name: "Frank", friends: [^friend1]}} = TestRepo.get(uid)
+    end
+
+    test "updating a list to delete an item (using changesets)" do
+      {friend1, _} = create_user(%User{name: "Deidre"})
+      {friend2, _} = create_user(%User{name: "Mick"})
+      {user, uid} = create_user(%User{name: "Frank", friends: [friend1, friend2]})
+
+      changeset = Changeset.cast(user, %{friends: [friend2]}, [:friends])
+
+      assert {:ok, %{queries: %{}, uids: %{}}} = TestRepo.update(changeset)
+      assert {:ok, %User{uid: ^uid, name: "Frank", friends: [^friend2]}} = TestRepo.get(uid)
+    end
+
+    test "complex update modifying some values, and deleting some list items while inserting others (using changesets)" do
+      {friend1, _} = create_user(%User{name: "Deidre"})
+      {friend2, _} = create_user(%User{name: "Mick"})
+      {user, uid} = create_user(%User{name: "Frank", tags: ["a", "b", "two"], friends: [friend1, friend2]})
+
+      changeset = Changeset.cast(user, %{name: "Frankie-boy", tags: ["one", "two"], location: %Geo{lat: 15.5, lon: 10.2}, referrer: friend1, friends: [friend2]}, [:name, :tags, :referrer, :friends, :location])
+
+      assert {:ok, %{queries: %{}, uids: %{}}} = TestRepo.update(changeset)
+      assert {:ok, %User{uid: ^uid, name: "Frankie-boy", tags: ["one", "two"], location: %Geo{lat: 15.5, lon: 10.2}, referrer: friend1, friends: [^friend2]}} = TestRepo.get(uid)
     end
   end
 
