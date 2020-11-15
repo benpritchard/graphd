@@ -548,6 +548,56 @@ defmodule Graphd.RepoTest do
     end
   end
 
+  describe "get_by/1" do
+    test "when not found" do
+      assert {:ok, nil} = TestRepo.get_by(%User{email: "not-found"})
+    end
+
+    test "when multiple records are found" do
+      name = "Simon the Great"
+      {_user, uid1} = create_user(%User{name: name})
+
+      {_user, uid2} = create_user(%User{name: name})
+
+      assert uid1 != uid2
+
+      assert {:ok, list} = TestRepo.get_by(%User{name: name})
+      assert is_list(list)
+      assert 2 == length(list)
+    end
+
+    test "when one record is found" do
+      name = "Singularity"
+      {_user, _uid} = create_user(%User{name: name})
+
+      assert {:ok, list} = TestRepo.get_by(%User{name: name})
+      assert is_list(list)
+      assert 1 == length(list)
+    end
+  end
+
+  describe "one_by/1" do
+    test "when not found" do
+      assert {:ok, nil} = TestRepo.one_by(%User{email: "not-found"})
+    end
+
+    test "when multiple records are found" do
+      name = "Nigel the Bold"
+      {_user, uid1} = create_user(%User{name: name})
+      {_user, uid2} = create_user(%User{name: name})
+      assert uid1 != uid2
+
+      assert {:error, :more_than_one_record_found} = TestRepo.one_by(%User{name: name})
+    end
+
+    test "when one record is found" do
+      name = "Unique"
+      {user, _uid} = create_user(%User{name: name})
+
+      assert {:ok, ^user} = TestRepo.one_by(%User{name: name})
+    end
+  end
+
   describe "schema operations" do
     test "basic crud operations" do
       user = %User{name: "Alice", age: 25}

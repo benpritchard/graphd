@@ -75,6 +75,7 @@ defmodule Graphd.Repo do
       def get!(uid), do: Graphd.Repo.get!(@name, meta(), uid)
 
       def get_by(%{} = by), do: Graphd.Repo.get_by(@name, meta(), by)
+      def one_by(%{} = by), do: Graphd.Repo.one_by(@name, meta(), by)
 
       def checkpass(%{} = reference, %{} = password),
         do: Graphd.Repo.checkpass(@name, reference, password)
@@ -454,7 +455,7 @@ defmodule Graphd.Repo do
   @doc """
   Get by field
   """
-  @spec get_by(conn, %{lookup: any}, map) :: {:error, Error.t() | term} | {:ok, map | nil}
+  @spec get_by(conn, %{lookup: any}, map) :: {:error, Error.t() | term} | {:ok, list | nil}
   def get_by(conn, %{lookup: lookup}, %{} = data) do
     [{field, value} | _] = Map.to_list(encode(data))
 
@@ -463,13 +464,28 @@ defmodule Graphd.Repo do
 
     with {:ok, %{"all" => nodes}} <- Graphd.query(conn, statement, %{"$a" => value}) do
       case nodes do
-        [map] ->
-          with {:error, error} <- decode(map, lookup),
-               do: {:error, %Error{action: :get, reason: error}}
+        list when is_list(list) and length(list) > 0 ->
+          case decode(list, lookup) do
+            {:error, error} -> {:error, %Error{action: :get, reason: error}}
+            list -> {:ok, list}
+          end
 
         _ ->
           {:ok, nil}
       end
+    end
+  end
+
+  @doc """
+  Get by field - expect one result
+  """
+  @spec one_by(conn, %{lookup: any}, map) :: {:error, Error.t() | term} | {:ok, map | nil}
+  def one_by(conn, %{lookup: lookup}, %{} = data) do
+    case get_by(conn, %{lookup: lookup}, data) do
+      {:ok, [one] = list} when(is_list(list) and length(list) == 1) -> {:ok, one}
+      {:ok, many} when(is_list(many) and length(many) > 1) -> {:error, :more_than_one_record_found}
+      {:ok, nil} -> {:ok, nil}
+      {:error, error} -> {:error, error}
     end
   end
 
