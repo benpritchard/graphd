@@ -8,6 +8,7 @@ defmodule Graphd.Type.Mutation do
 
   @impl true
   def execute(adapter, channel, request, json_lib, opts) do
+    # IO.inspect(request: request)
     Adapter.mutate(adapter, channel, request, json_lib, opts)
   end
 

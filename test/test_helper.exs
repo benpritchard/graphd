@@ -20,7 +20,7 @@ defmodule Graphd.User do
   use Graphd.Node
 
   schema "user" do
-    field :email, :string, index: ["exact"]
+    field :email, :string, index: ["exact"], unique: true, required: true
     field :name, :string, index: ["term"]
     field :password, :password
     field :nickname, :string
@@ -31,6 +31,7 @@ defmodule Graphd.User do
     field :referrer, :uid
     field :cache, :any, virtual: true
     has_many :tags, :string
+    field :phone, :string, index: ["exact"], unique: true
   end
 end
 

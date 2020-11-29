@@ -8,7 +8,7 @@ defmodule Graphd.NodeTest do
       assert "user" == User.__schema__(:source)
       assert :string == User.__schema__(:type, :name)
       assert :integer == User.__schema__(:type, :age)
-      assert [:email, :name, :password, :nickname, :age, :friends, :location, :destinations, :referrer, :tags] == User.__schema__(:fields)
+      assert [:email, :name, :password, :nickname, :age, :friends, :location, :destinations, :referrer, :tags, :phone] == User.__schema__(:fields)
     end
 
     test "alter" do
@@ -33,11 +33,13 @@ defmodule Graphd.NodeTest do
                  %{"predicate" => "user.location", "type" => "geo"},
                  %{"predicate" => "user.destinations", "type" => "[geo]"},
                  %{"predicate" => "user.referrer", "type" => "uid"},
-                 %{"predicate" => "user.tags", "type" => "[string]"}
+                 %{"predicate" => "user.tags", "type" => "[string]"},
+                 %{"predicate" => "user.phone", "type" => "string", "index" => true, "tokenizer" => ["exact"]}
                ],
                "types" => [
                  %{
                    "fields" => [
+                     %{"name" => "user.phone", "type" => "string"},
                      %{"name" => "user.tags", "type" => "string"},
                      %{"name" => "user.referrer", "type" => "uid"},
                      %{"name" => "user.destinations", "type" => "geo"},
@@ -58,6 +60,18 @@ defmodule Graphd.NodeTest do
     test "transformation callbacks" do
       assert "user.name" == User.__schema__(:field, :name)
       assert {:name, :string} == User.__schema__(:field, "user.name")
+
+      assert :string == User.__schema__(:type, :email)
+
+      assert true == User.__schema__(:unique, :email)
+      assert false == User.__schema__(:unique, :name)
+
+      assert true == User.__schema__(:required, :email)
+      assert false == User.__schema__(:required, :name)
+
+      assert [:phone, :email] == User.__schema__(:unique_fields)
+
+      assert [:email] == User.__schema__(:required_fields)
     end
   end
 end

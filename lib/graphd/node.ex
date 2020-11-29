@@ -121,18 +121,24 @@ defmodule Graphd.Node do
       def __schema__(:alter), do: unquote(Macro.escape(alter))
       def __schema__(:depends_on), do: unquote(Graphd.Node.__depends_on_modules__(__MODULE__))
 
-      for %Graphd.Field{name: name, type: type} <- @fields_data do
+      for %Graphd.Field{name: name, db_name: db_name, type: type, unique: unique, required: required} <- @fields_data do
         def __schema__(:type, unquote(name)), do: unquote(type)
+        def __schema__(:field, unquote(name)), do: unquote(db_name)
+        def __schema__(:field, unquote(db_name)), do: {unquote(name), unquote(type)}
+        def __schema__(:unique, unquote(name)), do: unquote(unique)
+        def __schema__(:required, unquote(name)), do: unquote(required)
       end
 
       def __schema__(:type, _), do: nil
-
-      for %Graphd.Field{name: name, db_name: db_name, type: type} <- @fields_data do
-        def __schema__(:field, unquote(name)), do: unquote(db_name)
-        def __schema__(:field, unquote(db_name)), do: {unquote(name), unquote(type)}
-      end
-
       def __schema__(:field, _), do: nil
+      def __schema__(:unique, _), do: false
+      def __schema__(:required, _), do: false
+
+      unique_fields = Graphd.Node.__unique_fields__(@fields_data)
+      def __schema__(:unique_fields), do: unquote(Macro.escape(unique_fields))
+
+      required_fields = Graphd.Node.__required_fields__(@fields_data)
+      def __schema__(:required_fields), do: unquote(Macro.escape(required_fields))
 
       changeset = Graphd.Node.__gen_changeset__(@fields_data)
       def __changeset__(), do: unquote(Macro.escape(changeset))
@@ -169,6 +175,16 @@ defmodule Graphd.Node do
   def __depends_on_modules__(module) do
     depends_on_module = module |> Module.get_attribute(:depends_on) |> List.wrap()
     :lists.usort(depends_on_module ++ Module.get_attribute(module, :depends_on_modules))
+  end
+
+  @doc false
+  def __unique_fields__(fields) do
+    for %Graphd.Field{name: name, unique: unique} <- fields, unique != false, into: [], do: name
+  end
+
+  @doc false
+  def __required_fields__(fields) do
+    for %Graphd.Field{name: name, required: required} <- fields, required != false, into: [], do: name
   end
 
   @doc false
@@ -217,7 +233,9 @@ defmodule Graphd.Node do
       Module.put_attribute(module, :fields, name)
 
       {db_name, type, alter} = db_field(name, type, opts, schema_name, module, depends_on)
-      field = %Field{name: name, type: type, db_name: db_name, alter: alter, opts: opts}
+      {unique, opts} = Keyword.pop(opts, :unique, false)
+      {required, opts} = Keyword.pop(opts, :required, false)
+      field = %Field{name: name, type: type, db_name: db_name, unique: unique, required: required, alter: alter, opts: opts}
       Module.put_attribute(module, :fields_data, field)
     end
   end
@@ -282,7 +300,7 @@ defmodule Graphd.Node do
     end
   end
 
-  @ignore_keys [:default, :depends_on, :list]
+  @ignore_keys [:default, :depends_on, :list, :unique, :required]
   defp gen_opt({key, _value}, _type) when key in @ignore_keys, do: []
   defp gen_opt({:index, true}, type), do: [{"index", true}, {"tokenizer", [db_type(type)]}]
 

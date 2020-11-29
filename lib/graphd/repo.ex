@@ -123,41 +123,6 @@ defmodule Graphd.Repo do
   end
 
   @doc """
-  The same as `create/2`, but return result of sucessful operation or raises.
-  """
-  @spec create!(conn, map | changeset, keyword) :: map | no_return
-  def create!(conn, data, opts) do
-    case create(conn, data, opts) do
-      {:ok, result} -> result
-      {:error, error} -> raise error
-    end
-  end
-
-  @doc """
-  Create a node.
-  """
-  @spec create(conn, map | changeset, keyword) ::
-          {:error, changeset | Error.t() | term} | {:ok, map}
-  def create(_conn, %{__struct__: Ecto.Changeset, valid?: false} = changeset, _opts),
-    do: {:error, changeset}
-
-  def create(conn, %{__struct__: Ecto.Changeset, valid?: true} = changeset, opts) do
-    %{data: %{__struct__: struct} = data, changes: changes} = changeset
-
-    with {:ok, new_data} <-
-           create(conn, Map.merge(changes, %{__struct__: struct, uid: Map.get(data, :uid)}), opts) do
-      {:ok, Map.merge(data, new_data)}
-    end
-  end
-
-  def create(conn, %{uid: uid} = data, opts) do
-    case uid do
-      nil -> set(conn, data, opts)
-      _ -> {:error, %{reason: :uid_present}}
-    end
-  end
-
-  @doc """
   The same as `mutate/2`, but return result of sucessful operation or raises.
   """
   @spec set!(conn, map | changeset, keyword) :: map | no_return
@@ -193,13 +158,83 @@ defmodule Graphd.Repo do
         {:error, %Error{action: :set, reason: error}}
 
       encoded_data ->
-        with {:ok, %{uids: ids_map}} <- Graphd.set(conn, %{}, encoded_data, opts) do
-          {:ok, Utils.replace_ids(data_with_ids, ids_map, :uid)}
+        with :ok <- check_required_fields(data) do
+          with {:ok, %{uids: ids_map}} <- do_set(conn, encoded_data, get_unique_fields(data), opts) do
+            {:ok, Utils.replace_ids(data_with_ids, ids_map, :uid)}
+          end
         end
     end
   end
 
-  # @spec update(any, map, any, any) :: {:error, <<_::456>> | Graphd.Error.t()} | map
+  defp do_set(conn, %{"uid" => uid} = data, unique_fields, opts) do
+    # add filter to exclude the current record (if exists) from uniqueness check, and
+    uid_filter = case String.split(uid, ":") do
+      [uid] = list when is_list(list) and length(list) == 1 ->
+        ~s|@filter(not(uid("#{uid}")))|
+      _ ->
+        ""
+    end
+
+    {queries, conditions} = Enum.reduce(Enum.with_index(unique_fields), {[], []}, fn {{field, value}, counter}, acc ->
+      {q, c} = acc
+      case value do
+        nil -> {q, c}
+        value ->
+          {
+            List.insert_at(q, -1, ~s|#{field}(func: eq(#{field}, "#{value}")) #{uid_filter} { v#{counter} as uid }|),
+            List.insert_at(c, -1, "eq(len(v#{counter}), 0)")
+          }
+      end
+    end)
+
+    case Enum.count(queries) do
+      0 ->
+        Graphd.set(conn, %{}, data, opts)
+      _ ->
+        query = %{query: "query {#{Enum.join(queries, " ")}}"}
+        condition = "@if(#{Enum.join(conditions, " AND ")})"
+
+        with {:ok, %{queries: queries, uids: uids}} when map_size(uids) == 0 <- Graphd.mutate(conn, query, [%{ cond: condition, set: data }], opts) do
+          {:error, {:reason, :already_exists, queries}}
+        end
+    end
+  end
+
+  @doc """
+  The same as `create/2`, but return result of sucessful operation or raises.
+  """
+  @spec create!(conn, map | changeset, keyword) :: map | no_return
+  def create!(conn, data, opts) do
+    case create(conn, data, opts) do
+      {:ok, result} -> result
+      {:error, error} -> raise error
+    end
+  end
+
+  @doc """
+  Create a node.
+  """
+  @spec create(conn, map | changeset, keyword) ::
+          {:error, changeset | Error.t() | term} | {:ok, map}
+  def create(_conn, %{__struct__: Ecto.Changeset, valid?: false} = changeset, _opts),
+    do: {:error, changeset}
+
+  def create(conn, %{__struct__: Ecto.Changeset, valid?: true} = changeset, opts) do
+    %{data: %{__struct__: struct} = data, changes: changes} = changeset
+
+    with {:ok, new_data} <-
+           create(conn, Map.merge(changes, %{__struct__: struct, uid: Map.get(data, :uid)}), opts) do
+      {:ok, Map.merge(data, new_data)}
+    end
+  end
+
+  def create(conn, %{uid: uid} = data, opts) do
+    case uid do
+      nil -> set(conn, data, opts)
+      _ -> {:error, %{reason: :uid_present}}
+    end
+  end
+
   @doc """
   Update data. Requires the record to exist.
   """
@@ -241,8 +276,8 @@ defmodule Graphd.Repo do
   def update(
         conn,
         %{
-          mutations: %{uid: uid, __struct__: type} = mutations,
-          deletions: %{uid: uid, __struct__: type} = deletions
+          mutations: %{uid: uid, __struct__: struct} = mutations,
+          deletions: %{uid: uid, __struct__: struct} = deletions
         },
         meta,
         opts
@@ -259,57 +294,144 @@ defmodule Graphd.Repo do
         {:error, %Error{action: :update, reason: d_error}}
 
       {encoded_mutations, encoded_deletions} ->
-        do_update(conn, uid, encoded_mutations, encoded_deletions, meta, opts)
+        do_update(conn, uid, encoded_mutations, encoded_deletions, struct, meta, opts)
     end
   end
 
-  def update(conn, %{mutations: %{uid: uid} = mutations}, meta, opts) when not is_nil(uid) do
+  def update(conn, %{mutations: %{uid: uid, __struct__: struct} = mutations}, meta, opts) when not is_nil(uid) do
     case encode(mutations) do
       {:error, error} ->
         {:error, %Error{action: :update, reason: error}}
 
       encoded_mutations ->
-        do_update(conn, uid, encoded_mutations, nil, meta, opts)
+        do_update(conn, uid, encoded_mutations, nil, struct, meta, opts)
     end
   end
 
-  def update(conn, %{deletions: %{uid: uid} = deletions}, meta, opts) when not is_nil(uid) do
+  def update(conn, %{deletions: %{uid: uid, __struct__: struct} = deletions}, meta, opts) when not is_nil(uid) do
     case encode(deletions) do
       {:error, error} ->
         {:error, %Error{action: :update, reason: error}}
 
       encoded_deletions ->
-        do_update(conn, uid, nil, encoded_deletions, meta, opts)
+        do_update(conn, uid, nil, encoded_deletions, struct, meta, opts)
     end
   end
 
   def update(_conn, _mutations, _meta, _opts),
     do: {:error, "incorrect update update params provided"}
 
-  @spec do_update(conn, String.t(), nil | map, nil | map, %{lookup: any}, keyword) ::
+  @spec do_update(conn, String.t(), nil | map, nil | map, struct, %{lookup: any}, keyword) ::
           {:error, Error.t() | term} | {:ok, map}
-  defp do_update(_conn, _uid, nil, nil, _meta, _opts),
+  defp do_update(_conn, _uid, nil, nil, _struct, _meta, _opts),
     do: {:error, "both mutations and deletions are nil - what's the point??"}
+
+
+
+
+
+
 
   defp do_update(
          conn,
          uid,
          mutations,
          deletions,
+         struct,
          %{lookup: _lookup} = _meta,
          opts
        ) do
-    query = %{
-      query: ~s|query var($uid: string) { v as var(func: uid($uid)) {uid}}|,
-      vars: %{"$uid" => uid}
-    }
 
-    data =
-      %{}
-      |> maybe_put(:delete, maybe_put(maybe_pop(deletions, "dgraph.type"), "uid", "uid(v)"))
-      |> maybe_put(:set, maybe_put(mutations, "uid", "uid(v)"))
+    with :ok <- check_required_fields(struct, deletions) do
+      data =
+        %{}
+        |> maybe_put(:delete, maybe_put(maybe_pop(deletions, "dgraph.type"), "uid", "uid(v)"))
+        |> maybe_put(:set, maybe_put(mutations, "uid", "uid(v)"))
 
-    Graphd.mutate(conn, query, [data], opts)
+      case mutations do
+        nil ->
+          query = %{
+            query: ~s|query var($uid: string) { v as var(func: uid($uid)) {uid}}|,
+            vars: %{"$uid" => uid}
+          }
+          Graphd.mutate(conn, query, [data], opts)
+        _ ->
+          do_upsert(conn, uid, get_unique_fields(struct, mutations), [data], opts)
+      end
+    end
+  end
+
+  defp do_upsert(conn, uid, unique_fields, [data], opts) do
+    # add filter to exclude the current record (if exists) from uniqueness check, and
+    uid_filter = ~s|@filter(not(uid("#{uid}")))|
+
+    {queries, conditions} = Enum.reduce(Enum.with_index(unique_fields), {[], []}, fn {{field, value}, counter}, acc ->
+      {q, c} = acc
+      case value do
+        nil -> {q, c}
+        value ->
+          {
+            List.insert_at(q, -1, ~s|#{field}(func: eq(#{field}, "#{value}")) #{uid_filter} { v#{counter} as uid }|),
+            List.insert_at(c, -1, "eq(len(v#{counter}), 0)")
+          }
+      end
+    end)
+
+    case Enum.count(queries) do
+      0 ->
+        query = %{
+          query: ~s|query var($uid: string) { var(func: uid($uid)) {v as uid}}|,
+          vars: %{"$uid" => uid}
+        }
+        Graphd.mutate(conn, query, [data], opts)
+      _ ->
+        query = %{query: "query var($uid: string) { var(func: uid($uid)) { v as uid } #{Enum.join(queries, " ")} }", vars: %{"$uid" => uid}}
+        condition = "@if(#{Enum.join(conditions, " AND ")})"
+
+        case Graphd.mutate(conn, query, [%{ cond: condition, set: Map.get(data, :set) }], opts) do
+          {:ok, %{queries: %{}}} = result when map_size(queries) == 0 -> result
+
+          {:ok, %{queries: queries}} = result when map_size(queries) > 0 ->
+            case for {field, value} <- queries, is_list(value) and length(value) > 0, into: %{}, do: {field, value} do
+              %{} = matches when map_size(matches) == 0 -> result
+              %{} = matches when map_size(matches) > 0 -> {:error, {:reason, :already_exists, matches}}
+            end
+
+          result -> result
+        end
+    end
+  end
+
+  defp get_unique_fields(%{__struct__: struct} = data) do
+    get_unique_fields(struct, data, false)
+  end
+  defp get_unique_fields(struct, data, use_db_field \\ true) do
+    for field <- struct.__schema__(:unique_fields), into: %{} do
+      db_field = field(struct, field)
+      field_to_use = case use_db_field do
+        true -> db_field
+        false -> field
+      end
+      {db_field, Map.get(data, field_to_use)}
+    end
+  end
+
+  defp check_required_fields(%{__struct__: struct, uid: uid} = data) do
+    case uid do
+      nil ->
+        check_required_fields(struct, data, false)
+      _ -> :ok
+    end
+  end
+
+  defp check_required_fields(struct, data, use_db_field \\ true)
+  defp check_required_fields(_struct, nil, _use_db_field), do: :ok
+  defp check_required_fields(struct, data, use_db_field) do
+      case for field <- struct.__schema__(:required_fields), (if use_db_field, do: Map.get(data, field(struct, field)), else: Map.get(data, field) == nil), into: [], do: field do
+        list when is_list(list) and length(list) > 0 ->
+          {:error, {:reason, :required_field_missing, list}}
+        _ -> :ok
+      end
   end
 
   defp items_removed_from_list(nil = _original_list, _current_list), do: nil
@@ -412,6 +534,8 @@ defmodule Graphd.Repo do
   def type(struct, key), do: struct.__schema__(:type, key)
   @compile {:inline, field: 2}
   @spec field(any, any) :: any
+  # def field(_struct, true), do: nil
+  def field(struct, list) when is_list(list), do: Enum.map(list, fn key -> field(struct, key) end)
   def field(_struct, "uid"), do: {:uid, :string}
   def field(struct, key), do: struct.__schema__(:field, key)
   @compile {:inline, source: 1}
